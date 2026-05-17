@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+_No changes yet._
+
+---
+
+## [v1.1.0] - 2026-05-17
+
+### Added
+
+- **gRPC server** (`grpc` package): `Engine.GRPCServer()`, unified `RunDual()` / `RunDualTLS()` for HTTP + gRPC, built-in logging/recovery/auth interceptors, reflection and health checks. See `docs/grpc.md`.
+
 ### Fixed
 
 - **CLI hot reload** (`kvolt run`): Stops the full dev server process tree before restart (build temp binary + process group kill) so the listen port is released instead of leaving an orphaned `go run` child.
