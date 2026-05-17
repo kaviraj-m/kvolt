@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kvolt/kvolt/context"
+	kvgrpc "github.com/go-kvolt/kvolt/grpc"
 	"github.com/go-kvolt/kvolt/router"
 )
 
@@ -21,6 +22,7 @@ type Engine struct {
 	router        *router.Router
 	pool          sync.Pool
 	htmlTemplates *template.Template // Global templates
+	grpcServer    *kvgrpc.Server     // Optional gRPC server
 }
 
 // New creates a new kvolt Engine.
@@ -187,4 +189,109 @@ func (e *Engine) Routes() []RouteInfo {
 		})
 	})
 	return routes
+}
+
+// ─── gRPC ─────────────────────────────────────────────────────────
+
+// GRPCServer returns the Engine's gRPC server, creating it on first call.
+// Pass options to configure interceptors, reflection, health checks, etc.
+//
+//	grpcSrv := app.GRPCServer(
+//	    grpc.WithReflection(true),
+//	    grpc.WithUnaryInterceptors(grpc.LoggingInterceptor(), grpc.RecoveryInterceptor()),
+//	)
+//	pb.RegisterMyServiceServer(grpcSrv.Raw(), &myImpl{})
+func (e *Engine) GRPCServer(opts ...kvgrpc.Option) *kvgrpc.Server {
+	if e.grpcServer == nil {
+		e.grpcServer = kvgrpc.NewServer(opts...)
+	}
+	return e.grpcServer
+}
+
+// RunGRPC starts a standalone gRPC server with graceful shutdown.
+func (e *Engine) RunGRPC(addr string) error {
+	if e.grpcServer == nil {
+		return fmt.Errorf("kvolt: gRPC server not initialized; call GRPCServer() first")
+	}
+
+	// Start gRPC in background.
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- e.grpcServer.ListenAndServe(addr)
+	}()
+
+	// Wait for signal.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-quit:
+		fmt.Printf("\nReceived %v, shutting down gRPC server...\n", sig)
+		e.grpcServer.GracefulStop()
+		fmt.Println("gRPC server exited")
+		return nil
+	case err := <-errCh:
+		return err
+	}
+}
+
+// RunAll starts both the HTTP server and gRPC server concurrently.
+// Both servers share a unified graceful shutdown triggered by SIGINT/SIGTERM.
+func (e *Engine) RunAll(httpAddr, grpcAddr string) error {
+	if e.grpcServer == nil {
+		return fmt.Errorf("kvolt: gRPC server not initialized; call GRPCServer() first")
+	}
+
+	httpSrv := &http.Server{
+		Addr:              httpAddr,
+		Handler:           e,
+		ReadHeaderTimeout: DefaultReadHeaderTimeout,
+		ReadTimeout:       DefaultReadTimeout,
+		WriteTimeout:      DefaultWriteTimeout,
+		IdleTimeout:       DefaultIdleTimeout,
+	}
+
+	fmt.Println("⚡ KVolt HTTP  server on http://localhost" + httpAddr)
+	fmt.Println("⚡ KVolt gRPC  server on" + grpcAddr)
+	fmt.Println("Press Ctrl+C to stop")
+
+	errCh := make(chan error, 2)
+
+	// Start HTTP.
+	go func() {
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- fmt.Errorf("http: %w", err)
+		}
+	}()
+
+	// Start gRPC.
+	go func() {
+		if err := e.grpcServer.ListenAndServe(grpcAddr); err != nil {
+			errCh <- fmt.Errorf("grpc: %w", err)
+		}
+	}()
+
+	// Wait for signal or fatal error.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-quit:
+		fmt.Printf("\nReceived %v, shutting down...\n", sig)
+	case err := <-errCh:
+		fmt.Printf("Server error: %v — shutting down...\n", err)
+	}
+
+	// Graceful shutdown for both.
+	ctx, cancel := stdContext.WithTimeout(stdContext.Background(), 5*time.Second)
+	defer cancel()
+
+	var shutdownErr error
+	if err := httpSrv.Shutdown(ctx); err != nil {
+		shutdownErr = fmt.Errorf("http shutdown: %w", err)
+	}
+	e.grpcServer.GracefulStop()
+
+	fmt.Println("All servers exited")
+	return shutdownErr
 }

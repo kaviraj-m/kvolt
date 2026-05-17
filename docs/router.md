@@ -18,11 +18,6 @@ app.GET("/users/:id", func(c *context.Context) error {
     id := c.Params.Get("id")
     return c.String(200, "User ID: " + id)
 })
-```go
-app.GET("/users/:id", func(c *context.Context) error {
-    id := c.Params.Get("id")
-    return c.String(200, "User ID: " + id)
-})
 ```
 
 ## Real-World Pattern: RESTful API
@@ -86,6 +81,39 @@ v1.Use(AuthMiddleware)
 
 v1.GET("/profile", profileHandler) // /v1/profile (Protected)
 ```
+
+### Nested groups and middleware isolation
+
+`Group()` copies the parent middleware slice. Sibling groups do **not** share the same backing array, so `Use()` on one child does not leak onto another:
+
+```go
+api := app.Group("/api")
+api.Use(authRequired)
+
+exec := api.Group("/executive")
+exec.Use(roleRequired("EXECUTIVE"))
+
+designer := api.Group("/designer")
+designer.Use(roleRequired("DESIGNER")) // only [auth] + designer role — not executive
+```
+
+## Multiple static segments after a parameter
+
+Routes that share a param prefix but differ in the next segment are supported:
+
+```go
+app.GET("/orders/:orderId/assets", listAssets)
+app.GET("/orders/:orderId/take", takeOrder)
+app.POST("/orders/:orderId/decision", decide)
+app.GET("/orders/:orderId/files/:assetId", downloadFile)
+```
+
+Registration order does not matter. Use `c.Param("orderId")` (or `c.Params.Get`) for captured values.
+
+## Patterns to avoid
+
+- **Param before static in one segment** — e.g. `GET /items/:id/read` may not populate params reliably. Prefer `GET /items/read/:id`.
+- **Duplicate path + method** — only one handler per exact path and HTTP method.
 
 ## Static Files
 

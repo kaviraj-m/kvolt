@@ -20,7 +20,7 @@
 ## Features 🚀
 
 *   **Extreme Performance**: **250,000+ Req/Sec** using `bytedance/sonic` for JSON serialization and `sync.Pool`.
-*   **Radix Tree Router**: Smart routing with support for named parameters (`/users/:id`), wildcards, and regex.
+*   **Radix Tree Router**: Smart routing with named parameters (`/users/:id`), multiple static suffixes after a param (`/orders/:id/assets`, `/orders/:id/take`), wildcards, and isolated nested-group middleware.
 *   **Static Assets**: Built-in support for serving static files (`app.Static()`) with correct prefix handling.
 *   **Protocol Ready**: Native support for **HTTP/2** (`RunTLS`) and **WebSockets** (`c.Upgrade()`).
 *   **Auto-Documentation**:
