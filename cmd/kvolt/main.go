@@ -478,16 +478,6 @@ func shouldRestartOnEvent(event fsnotify.Event) bool {
 }
 
 func restartApp(entryPoint string) {
-	// Kill existing process
-	if cmdProcess != nil && cmdProcess.Process != nil {
-		if err := cmdProcess.Process.Kill(); err != nil {
-			if !strings.Contains(err.Error(), "process already finished") {
-				fmt.Printf("Failed to kill process: %v\n", err)
-			}
-		}
-		cmdProcess.Wait()
-	}
-
 	// Resolve entry point: flag > default cmd/api/main.go > main.go
 	if entryPoint == "" {
 		entryPoint = "cmd/api/main.go"
@@ -500,12 +490,31 @@ func restartApp(entryPoint string) {
 		return
 	}
 
-	cmdProcess = exec.Command("go", "run", entryPoint)
+	bin, err := devBinaryPath(entryPoint)
+	if err != nil {
+		fmt.Printf("❌ Dev binary path: %v\n", err)
+		return
+	}
+
+	// Build before stopping so a compile error leaves the previous server running.
+	buildCmd := exec.Command("go", "build", "-o", bin, entryPoint)
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+	if err := buildCmd.Run(); err != nil {
+		fmt.Printf("❌ Build failed (server unchanged): %v\n", err)
+		return
+	}
+
+	stopApp()
+
+	cmdProcess = exec.Command(bin)
 	cmdProcess.Stdout = os.Stdout
 	cmdProcess.Stderr = os.Stderr
 	cmdProcess.Stdin = os.Stdin
+	cmdProcess.SysProcAttr = procAttrsForDev()
 
 	if err := cmdProcess.Start(); err != nil {
 		fmt.Printf("❌ Failed to start app: %v\n", err)
+		cmdProcess = nil
 	}
 }

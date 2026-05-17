@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **CLI hot reload** (`kvolt run`): Stops the full dev server process tree before restart (build temp binary + process group kill) so the listen port is released instead of leaving an orphaned `go run` child.
 - **Router groups**: `Group()` now copies the parent middleware slice so sibling groups (`/api/executive`, `/api/designer`, …) no longer leak each other's `Use()` middleware.
 - **Router**: Multiple static suffixes after the same `:param` (e.g. `/orders/:id/assets` and `/orders/:id/take`) register and match correctly regardless of registration order. Consecutive params (e.g. `/files/:orderId/:assetId`) continue to work.
 
