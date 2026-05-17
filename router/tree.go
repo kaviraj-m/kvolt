@@ -106,9 +106,21 @@ walk:
 		// Make new node a child of this node
 		if i < len(path) {
 			path = path[i:]
+
+			if n.wildChild {
+				n = n.children[0]
+				n.priority++
+
+				if len(path) >= len(n.path) && n.path == path[:len(n.path)] &&
+					n.nType != catchAll &&
+					(len(n.path) >= len(path) || path[len(n.path)] == '/') {
+					continue walk
+				}
+			}
+
 			c := path[0]
 
-			// '/' after param
+			// Continue static suffix after a param via its single continuation node.
 			if n.nType == param && c == '/' && len(n.children) == 1 {
 				n = n.children[0]
 				n.priority++
@@ -186,13 +198,10 @@ func (n *Node) insertChild(path, fullPath string, handle Handler) {
 			n = child
 			n.priority++
 
-			// If the path doesn't end with the wildcard, then there
-			// will be another non-wildcard sub-path starting with '/'
+			// Static continuation after the param (e.g. /assets, /take).
 			if len(wildcard) < len(path) {
 				path = path[len(wildcard):]
-				child := &Node{
-					priority: 1,
-				}
+				child := &Node{priority: 1}
 				n.children = []*Node{child}
 				n = child
 				continue
@@ -262,7 +271,10 @@ walk: // Outer loop for walking the tree
 				n = n.children[0]
 				switch n.nType {
 				case param:
-					handle, p, pathLeft, nextN, returnNow := n.getValueParam(path, p)
+					var pathLeft string
+					var nextN *Node
+					var returnNow bool
+					handle, p, pathLeft, nextN, returnNow = n.getValueParam(path, p)
 					if returnNow {
 						return handle, p, false
 					}

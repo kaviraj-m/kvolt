@@ -15,9 +15,10 @@ type RouterGroup struct {
 
 // Group creates a new child group.
 func (group *RouterGroup) Group(prefix string) *RouterGroup {
+	md := append([]context.HandlerFunc(nil), group.middleware...)
 	return &RouterGroup{
 		prefix:     group.prefix + prefix,
-		middleware: group.middleware, // Inherit parent middleware
+		middleware: md,
 		engine:     group.engine,
 	}
 }
